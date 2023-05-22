@@ -1,9 +1,16 @@
+import gc
+from scipy import stats
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import GridSearchCV, ParameterGrid
 import xgboost as xgb
 from sklearn.ensemble import GradientBoostingRegressor
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+color = sns.color_palette()
+sns.set_style('darkgrid')
 
 PROPERTIES_DF_CATEGORY_COLUMNS = ['airconditioningtypeid', 'buildingqualitytypeid', 'fips', 'heatingorsystemtypeid',
                                   'propertycountylandusecode', 'propertylandusetypeid', 'propertyzoningdesc',
@@ -23,23 +30,44 @@ IMPUTE_XGB_PARAMS = {'max_depth': 3, 'alpha': 2.}  # arbitrary params
 PREDICT_XGB_PARAMS = {'eta': 0.2, 'lambda': 2.5, 'alpha': 2.5, 'max_depth': 2}
 
 
-def convert_columns_to_bool(properties_df: pd.DataFrame, columns_to_convert: list[str]) -> pd.DataFrame:
-    for column_to_convert in columns_to_convert:
-        properties_df[column_to_convert] = properties_df[column_to_convert].map({'Y': True}).fillna(False).astype(bool)
-    return properties_df
-
-
 def load_properties_df(properties_csv_fp: str) -> pd.DataFrame:
     properties_df = pd.read_csv(properties_csv_fp)
     properties_df = properties_df.drop(PROPERTIES_DF_REDUNDANT_COLUMNS_TO_DROP, axis=1)
     # drop columns with mostly null values that can't be reliably imputed
     properties_df = properties_df.drop(PROPERTIES_DF_NULL_COLUMNS_TO_DROP, axis=1)
-    # properties_df['taxdelinquencyflag'] = properties_df['taxdelinquencyflag'].map({'Y': True}).fillna(False).astype(
-    #     bool)
-    # properties_df['fireplaceflag'] = properties_df['fireplaceflag'].map({})
-
     numeric_columns = properties_df.select_dtypes(include=['float']).columns.tolist()
     properties_df[numeric_columns] = properties_df[numeric_columns].astype('float32')
+    return properties_df
+
+
+def target_variable_eda(logerror_data: np.ndarray[np.float32]) -> None:
+    logerror_data.hist(bins=100, figsize=(8, 5))
+    plt.show()
+    logerror_data.describe()
+    sns.distplot(logerror_data, fit=stats.norm)
+    (mu, sigma) = stats.norm.fit(logerror_data)
+    print('\n mu = {:.2f} and sigma = {:.2f}\n'.format(mu, sigma))
+    plt.legend(['Normal dist. ($\mu=$ {:.2f} and $\sigma=$ {:.2f} )'.format(mu, sigma)],
+               loc='best')
+    plt.ylabel('Frequency')
+    plt.title('LogError distribution')
+
+    plt.figure()
+    stats.probplot(logerror_data, plot=plt)
+    plt.show()
+
+
+def drop_outliers(train_df: pd.DataFrame, num_stdevs: int) -> pd.DataFrame:
+    mean = train_df['logerror'].mean()
+    std = train_df['logerror'].std()
+    high_thresh = mean + num_stdevs * std
+    low_thresh = mean - num_stdevs * std
+    return train_df[train_df['logerror'].between(low_thresh, high_thresh)]
+
+
+def convert_columns_to_bool(properties_df: pd.DataFrame, columns_to_convert: list[str]) -> pd.DataFrame:
+    for column_to_convert in columns_to_convert:
+        properties_df[column_to_convert] = properties_df[column_to_convert].map({'Y': True}).fillna(False).astype(bool)
     return properties_df
 
 
@@ -87,8 +115,6 @@ def engineer_features_properties_df(properties_df: pd.DataFrame) -> pd.DataFrame
     return properties_df
 
 
-
-
 def join_train_df(properties_df: pd.DataFrame, train_csvs: list[str]) -> pd.DataFrame:
     train_df_all = pd.concat([pd.read_csv(train_csv) for train_csv in train_csvs])
     train_df_all = train_df_all.merge(properties_df, how='left', on='parcelid')
@@ -96,22 +122,16 @@ def join_train_df(properties_df: pd.DataFrame, train_csvs: list[str]) -> pd.Data
     return train_df_all
 
 
-# properties_df_2016 = load_properties_df('properties_2016.csv')
 properties_df_2017 = load_properties_df('properties_2017.csv')
 properties_df_2017 = impute_properties_df(properties_df_2017)
 properties_df_2017 = engineer_features_properties_df(properties_df_2017)
 train_df = join_train_df(properties_df_2017, ["train_2016_v2.csv", "train_2017.csv"])
+target_variable_eda(train_df.logerror)
+train_df = drop_outliers(train_df, 2.)
 min_date = train_df.transactiondate.min()
 train_df['transaction_month'] = ((pd.to_datetime(train_df.transactiondate) - min_date) // np.timedelta64(1, 'M')) + 1
-# properties_df_all = pd.concat([properties_df_2016, properties_df_2017])
-# properties_df_all = impute_properties_df(properties_df_all)
-# properties_df_all = engineer_features_properties_df(properties_df_all)
-# properties_df_all = join_train_df(properties_df_all, ["train_2016_v2.csv", "train_2017.csv"])
-# properties_df_2016_train, properties_df_2016_test = properties_df_2016_train[
-#     properties_df_2016_train['transactiondate'] < pd.to_datetime('2016-10-15')], properties_df_2016_train[
-#     properties_df_2016_train['transactiondate'] >= pd.to_datetime('2016-10-15')]
+
 predictions_df = properties_df_2017[['parcelid']]
-# for properties_df_train in [properties_df_all[properties_df_all.index.isin(properties_df_2016)], properties_df_all]:
 x_train = train_df.drop(['parcelid', 'logerror', 'transactiondate'], axis=1)
 y_train = train_df['logerror'].values
 data_dmatrix = xgb.DMatrix(data=x_train, label=y_train, enable_categorical=True)
@@ -124,7 +144,7 @@ for prediction_date_string in ["20161001", "20161101", "20161201", "20171001", "
     predictions_df[prediction_date_string[:6]] = xgb_model.predict(
         xgb.DMatrix(x_train.drop('parcelid', axis=1), enable_categorical=True))
 
-predictions_df.to_csv('first_submission.gz', index=False, compression='gzip')
+predictions_df.to_csv('submission.gz', index=False, compression='gzip')
 
 # # data imputation
 # # TODO: try to impute these rather than dropping
@@ -195,6 +215,9 @@ predictions_df.to_csv('first_submission.gz', index=False, compression='gzip')
 # properties_df_all = properties_df_all.drop(['lotsizesquarefeet', 'bathroomcnt'], axis=1)
 #
 # # load training data and merge with properties
+# properties_df_2016_train, properties_df_2016_test = properties_df_2016_train[
+#     properties_df_2016_train['transactiondate'] < pd.to_datetime('2016-10-15')], properties_df_2016_train[
+#     properties_df_2016_train['transactiondate'] >= pd.to_datetime('2016-10-15')]
 # train_2016 = pd.read_csv('train_2016_v2.csv')
 # df_train = train_2016.merge(properties_df_all, how='left', on='parcelid')
 #
