@@ -111,7 +111,6 @@ def engineer_features_properties_df(properties_df: pd.DataFrame) -> pd.DataFrame
     properties_df['halfbathcnt'] = properties_df.bathroomcnt - properties_df.fullbathcnt
     properties_df['unfinishedsquarefeet'] = properties_df.lotsizesquarefeet - properties_df.calculatedfinishedsquarefeet
     properties_df['finishedareapct'] = properties_df.calculatedfinishedsquarefeet / properties_df.lotsizesquarefeet
-    properties_df = properties_df.drop(['lotsizesquarefeet', 'bathroomcnt'], axis=1)
     return properties_df
 
 
