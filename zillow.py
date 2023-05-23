@@ -23,24 +23,27 @@ PROPERTIES_DF_NULL_COLUMNS_TO_DROP = ['architecturalstyletypeid', 'basementsqft'
                                       'finishedsquarefeet15', 'finishedsquarefeet50', 'poolsizesum', 'storytypeid',
                                       'threequarterbathnbr', 'typeconstructiontypeid', 'yardbuildingsqft26']
 ZERO_IMPUTATION_COLUMNS = ['fireplacecnt', 'pooltypeid2', 'pooltypeid7', 'pooltypeid10']
-ONE_IMPUTATION_COLUMNS = ['fullbathcnt', 'unitcnt', 'numberofstories']
-MODE_IMPUTATION_COLUMNS = ['bedroomcnt', 'bathroomcnt'] + PROPERTIES_DF_CATEGORY_COLUMNS
+ONE_IMPUTATION_COLUMNS = ['fullbathcnt', 'unitcnt', 'numberofstories', 'bedroomcnt', 'bathroomcnt']
+MODE_IMPUTATION_COLUMNS = PROPERTIES_DF_CATEGORY_COLUMNS
 IMPUTE_X_COLUMNS = ZERO_IMPUTATION_COLUMNS + ONE_IMPUTATION_COLUMNS + MODE_IMPUTATION_COLUMNS
 IMPUTE_XGB_PARAMS = {'max_depth': 3, 'alpha': 2.}  # arbitrary params
 PREDICT_XGB_PARAMS = {'eta': 0.2, 'lambda': 2.5, 'alpha': 2.5, 'max_depth': 2}
 
 
 def load_properties_df(properties_csv_fp: str) -> pd.DataFrame:
+    print("loading properties dataframe from csv " + properties_csv_fp)
     properties_df = pd.read_csv(properties_csv_fp)
     properties_df = properties_df.drop(PROPERTIES_DF_REDUNDANT_COLUMNS_TO_DROP, axis=1)
     # drop columns with mostly null values that can't be reliably imputed
     properties_df = properties_df.drop(PROPERTIES_DF_NULL_COLUMNS_TO_DROP, axis=1)
     numeric_columns = properties_df.select_dtypes(include=['float']).columns.tolist()
     properties_df[numeric_columns] = properties_df[numeric_columns].astype('float32')
+    print("done loading properties dataframe from csv " + properties_csv_fp)
     return properties_df
 
 
 def target_variable_eda(logerror_data: np.ndarray[np.float32]) -> None:
+    print("beginning target variable eda")
     logerror_data.hist(bins=100, figsize=(8, 5))
     plt.show()
     logerror_data.describe()
@@ -55,6 +58,7 @@ def target_variable_eda(logerror_data: np.ndarray[np.float32]) -> None:
     plt.figure()
     stats.probplot(logerror_data, plot=plt)
     plt.show()
+    print("done with target variable eda")
 
 
 def drop_outliers(train_df: pd.DataFrame, num_stdevs: int) -> pd.DataFrame:
@@ -81,6 +85,7 @@ def impute_properties_df(properties_df: pd.DataFrame) -> pd.DataFrame:
 
     properties_df[ZERO_IMPUTATION_COLUMNS] = properties_df[ZERO_IMPUTATION_COLUMNS].fillna(0)
     properties_df[ONE_IMPUTATION_COLUMNS] = properties_df[ONE_IMPUTATION_COLUMNS].fillna(1)
+    properties_df[ONE_IMPUTATION_COLUMNS] = properties_df[ONE_IMPUTATION_COLUMNS].replace(0, 1)
     properties_df[MODE_IMPUTATION_COLUMNS] = properties_df[MODE_IMPUTATION_COLUMNS].fillna(
         properties_df[MODE_IMPUTATION_COLUMNS].mode().iloc[0])
     for category_col in PROPERTIES_DF_CATEGORY_COLUMNS:
@@ -109,15 +114,20 @@ def impute_properties_df(properties_df: pd.DataFrame) -> pd.DataFrame:
 
 def engineer_features_properties_df(properties_df: pd.DataFrame) -> pd.DataFrame:
     properties_df['halfbathcnt'] = properties_df.bathroomcnt - properties_df.fullbathcnt
-    properties_df['unfinishedsquarefeet'] = properties_df.lotsizesquarefeet - properties_df.calculatedfinishedsquarefeet
+    properties_df['unfinished_sqft'] = properties_df.lotsizesquarefeet - properties_df.calculatedfinishedsquarefeet
+    properties_df['unfinished_sqft_pct'] = properties_df.unfinished_sqft / properties_df.lotsizesquarefeet
     properties_df['finishedareapct'] = properties_df.calculatedfinishedsquarefeet / properties_df.lotsizesquarefeet
+    properties_df['property_tax_per_sqft'] = properties_df.taxamount / properties_df.calculatedfinishedsquarefeet
+    properties_df['avg_finished_area_per_room'] = properties_df.calculatedfinishedsquarefeet / properties_df.bedroomcnt
     return properties_df
 
 
 def join_train_df(properties_df: pd.DataFrame, train_csvs: list[str]) -> pd.DataFrame:
+    print("joining properties dataframe and training data from csvs " + str(train_csvs))
     train_df_all = pd.concat([pd.read_csv(train_csv) for train_csv in train_csvs])
     train_df_all = train_df_all.merge(properties_df, how='left', on='parcelid')
     train_df_all['transactiondate'] = pd.to_datetime(train_df_all['transactiondate'])
+    print("done joining properties dataframe and training data from csvs " + str(train_csvs))
     return train_df_all
 
 
@@ -126,7 +136,7 @@ properties_df_2017 = impute_properties_df(properties_df_2017)
 properties_df_2017 = engineer_features_properties_df(properties_df_2017)
 train_df = join_train_df(properties_df_2017, ["train_2016_v2.csv", "train_2017.csv"])
 target_variable_eda(train_df.logerror)
-train_df = drop_outliers(train_df, 2.1)
+train_df = drop_outliers(train_df, 2.2)
 min_date = train_df.transactiondate.min()
 train_df['transaction_month'] = ((pd.to_datetime(train_df.transactiondate) - min_date) // np.timedelta64(1, 'M')) + 1
 
