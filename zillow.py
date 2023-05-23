@@ -127,7 +127,7 @@ properties_df_2017 = impute_properties_df(properties_df_2017)
 properties_df_2017 = engineer_features_properties_df(properties_df_2017)
 train_df = join_train_df(properties_df_2017, ["train_2016_v2.csv", "train_2017.csv"])
 target_variable_eda(train_df.logerror)
-train_df = drop_outliers(train_df, 2.)
+train_df = drop_outliers(train_df, 2.1)
 min_date = train_df.transactiondate.min()
 train_df['transaction_month'] = ((pd.to_datetime(train_df.transactiondate) - min_date) // np.timedelta64(1, 'M')) + 1
 
