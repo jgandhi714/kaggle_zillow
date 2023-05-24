@@ -21,9 +21,9 @@ PROPERTIES_DF_REDUNDANT_COLUMNS_TO_DROP = ['calculatedbathnbr', 'poolcnt', 'hash
 PROPERTIES_DF_NULL_COLUMNS_TO_DROP = ['architecturalstyletypeid', 'basementsqft', 'buildingclasstypeid', 'decktypeid',
                                       'finishedfloor1squarefeet', 'finishedsquarefeet6', 'finishedsquarefeet13',
                                       'finishedsquarefeet15', 'finishedsquarefeet50', 'poolsizesum', 'storytypeid',
-                                      'threequarterbathnbr', 'typeconstructiontypeid', 'yardbuildingsqft26']
+                                      'threequarterbathnbr', 'typeconstructiontypeid', 'yardbuildingsqft26', 'numberofstories']
 ZERO_IMPUTATION_COLUMNS = ['fireplacecnt', 'pooltypeid2', 'pooltypeid7', 'pooltypeid10']
-ONE_IMPUTATION_COLUMNS = ['fullbathcnt', 'unitcnt', 'numberofstories', 'bedroomcnt', 'bathroomcnt']
+ONE_IMPUTATION_COLUMNS = ['fullbathcnt', 'unitcnt', 'bedroomcnt', 'bathroomcnt']
 MODE_IMPUTATION_COLUMNS = PROPERTIES_DF_CATEGORY_COLUMNS
 IMPUTE_X_COLUMNS = ZERO_IMPUTATION_COLUMNS + ONE_IMPUTATION_COLUMNS + MODE_IMPUTATION_COLUMNS
 IMPUTE_XGB_PARAMS = {'max_depth': 3, 'alpha': 2.}  # arbitrary params
