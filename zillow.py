@@ -14,20 +14,22 @@ sns.set_style('darkgrid')
 
 PROPERTIES_DF_CATEGORY_COLUMNS = ['airconditioningtypeid', 'buildingqualitytypeid', 'fips', 'heatingorsystemtypeid',
                                   'propertycountylandusecode', 'propertylandusetypeid', 'propertyzoningdesc',
-                                  'regionidcity', 'regionidneighborhood', 'regionidzip', 'censustractandblock']
+                                  'regionidcity', 'regionidneighborhood', 'regionidzip']
 PROPERTIES_DF_REDUNDANT_COLUMNS_TO_DROP = ['calculatedbathnbr', 'poolcnt', 'hashottuborspa', 'taxdelinquencyyear',
-                                           'rawcensustractandblock', 'assessmentyear']
+                                           'rawcensustractandblock', 'threequarterbathnbr', 'taxvaluedollarcnt']
 # properties with mostly null values that can't be reliably imputed
-PROPERTIES_DF_NULL_COLUMNS_TO_DROP = ['architecturalstyletypeid', 'basementsqft', 'buildingclasstypeid',
+PROPERTIES_DF_NULL_COLUMNS_TO_DROP = ['architecturalstyletypeid', 'assessmentyear', 'basementsqft', 'buildingclasstypeid',
                                       'finishedfloor1squarefeet', 'finishedsquarefeet6', 'finishedsquarefeet13',
                                       'finishedsquarefeet15', 'finishedsquarefeet50', 'storytypeid',
-                                      'threequarterbathnbr', 'typeconstructiontypeid', 'yardbuildingsqft26', 'numberofstories']
-ZERO_IMPUTATION_COLUMNS = ['fireplacecnt', 'pooltypeid2', 'pooltypeid7', 'pooltypeid10', 'decktypeid', 'poolsizesum']
+                                      'typeconstructiontypeid', 'yardbuildingsqft26', 'numberofstories', 'censustractandblock']
+ZERO_IMPUTATION_COLUMNS = ['fireplacecnt', 'pooltypeid2', 'pooltypeid7', 'pooltypeid10', 'decktypeid', 'poolsizesum', 'yardbuildingsqft17']
 ONE_IMPUTATION_COLUMNS = ['fullbathcnt', 'unitcnt', 'bedroomcnt', 'bathroomcnt']
 MODE_IMPUTATION_COLUMNS = PROPERTIES_DF_CATEGORY_COLUMNS
+CONVERT_TO_BOOL_COLUMNS = ['fireplaceflag', 'taxdelinquencyflag']
 IMPUTE_X_COLUMNS = ZERO_IMPUTATION_COLUMNS + ONE_IMPUTATION_COLUMNS + MODE_IMPUTATION_COLUMNS
 IMPUTE_XGB_PARAMS = {'max_depth': 3, 'alpha': 2.}  # arbitrary params
 PREDICT_XGB_PARAMS = {'eta': 0.2, 'lambda': 2.5, 'alpha': 2.5, 'max_depth': 2}
+
 
 
 def load_properties_df(properties_csv_fp: str) -> pd.DataFrame:
@@ -76,7 +78,7 @@ def convert_columns_to_bool(properties_df: pd.DataFrame, columns_to_convert: lis
 
 
 def impute_properties_df(properties_df: pd.DataFrame) -> pd.DataFrame:
-    properties_df = convert_columns_to_bool(properties_df, ['fireplaceflag', 'taxdelinquencyflag'])
+    properties_df = convert_columns_to_bool(properties_df, CONVERT_TO_BOOL_COLUMNS)
     properties_df['calculatedfinishedsquarefeet'] = properties_df['calculatedfinishedsquarefeet'].combine_first(
         properties_df['finishedsquarefeet12'])
     properties_df.loc[properties_df['fireplaceflag'], 'fireplacecnt'] = properties_df.loc[
@@ -109,6 +111,7 @@ def impute_properties_df(properties_df: pd.DataFrame) -> pd.DataFrame:
         xgb_model = xgb.train(dtrain=impute_train_data_dmatrix, params=IMPUTE_XGB_PARAMS)
         predictions = pd.Series(xgb_model.predict(impute_test_data_dmatrix))
         properties_df[col] = properties_df[col].fillna(predictions)
+        print("done imputing column: " + col)
     return properties_df
 
 
