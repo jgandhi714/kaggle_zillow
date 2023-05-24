@@ -20,9 +20,9 @@ PROPERTIES_DF_REDUNDANT_COLUMNS_TO_DROP = ['calculatedbathnbr', 'poolcnt', 'hash
 # properties with mostly null values that can't be reliably imputed
 PROPERTIES_DF_NULL_COLUMNS_TO_DROP = ['architecturalstyletypeid', 'basementsqft', 'buildingclasstypeid',
                                       'finishedfloor1squarefeet', 'finishedsquarefeet6', 'finishedsquarefeet13',
-                                      'finishedsquarefeet15', 'finishedsquarefeet50', 'poolsizesum', 'storytypeid',
+                                      'finishedsquarefeet15', 'finishedsquarefeet50', 'storytypeid',
                                       'threequarterbathnbr', 'typeconstructiontypeid', 'yardbuildingsqft26', 'numberofstories']
-ZERO_IMPUTATION_COLUMNS = ['fireplacecnt', 'pooltypeid2', 'pooltypeid7', 'pooltypeid10', 'decktypeid']
+ZERO_IMPUTATION_COLUMNS = ['fireplacecnt', 'pooltypeid2', 'pooltypeid7', 'pooltypeid10', 'decktypeid', 'poolsizesum']
 ONE_IMPUTATION_COLUMNS = ['fullbathcnt', 'unitcnt', 'bedroomcnt', 'bathroomcnt']
 MODE_IMPUTATION_COLUMNS = PROPERTIES_DF_CATEGORY_COLUMNS
 IMPUTE_X_COLUMNS = ZERO_IMPUTATION_COLUMNS + ONE_IMPUTATION_COLUMNS + MODE_IMPUTATION_COLUMNS
