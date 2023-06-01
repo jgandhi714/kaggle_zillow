@@ -1,5 +1,4 @@
 import warnings
-import gc
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,15 +7,15 @@ import seaborn as sns
 import xgboost as xgb
 from scipy import stats
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import SimpleImputer, IterativeImputer
-from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
-from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import OneHotEncoder
 
 from feature_dropper import FeatureDropper
-from feature_engineering import CreateYearFeatures, CreateDateFeatures, CreateDerivedFeatures
+from feature_engineering import CreateYearFeatures, CreateDateFeatures
 
 warnings.filterwarnings('ignore')
 
@@ -24,9 +23,6 @@ color = sns.color_palette()
 sns.set_style('darkgrid')
 
 RANDOM_SEED = 10
-PROPERTIES_DF_CATEGORY_COLUMNS = ['airconditioningtypeid', 'buildingqualitytypeid', 'fips', 'heatingorsystemtypeid',
-                                  'propertycountylandusecode', 'propertylandusetypeid', 'propertyzoningdesc',
-                                  'regionidcity', 'regionidneighborhood', 'regionidzip']
 PROPERTIES_DF_REDUNDANT_COLUMNS_TO_DROP = ['calculatedbathnbr', 'poolcnt', 'hashottuborspa', 'taxdelinquencyyear',
                                            'rawcensustractandblock', 'threequarterbathnbr', 'taxvaluedollarcnt']
 # properties with mostly null values that can't be reliably imputed
@@ -35,20 +31,27 @@ PROPERTIES_DF_NULL_COLUMNS_TO_DROP = ['architecturalstyletypeid', 'assessmentyea
                                       'finishedsquarefeet15', 'finishedsquarefeet50', 'storytypeid',
                                       'typeconstructiontypeid', 'yardbuildingsqft26', 'numberofstories', 'censustractandblock']
 ALL_COLUMNS_TO_DROP = PROPERTIES_DF_REDUNDANT_COLUMNS_TO_DROP + PROPERTIES_DF_NULL_COLUMNS_TO_DROP
+PROPERTIES_DF_CAT_COLUMNS = [
+    'airconditioningtypeid', 'architecturalstyletypeid', 'buildingclasstypeid', 'buildingqualitytypeid',
+    'decktypeid', 'fips', 'hashottuborspa', 'heatingorsystemtypeid', 'pooltypeid10', 'pooltypeid2',
+    'pooltypeid7', 'propertycountylandusecode', 'propertylandusetypeid', 'propertyzoningdesc',
+    'rawcensustractandblock', 'regionidcity', 'regionidcounty', 'regionidneighborhood', 'regionidzip',
+    'storytypeid', 'typeconstructiontypeid', 'fireplaceflag', 'assessmentyear',
+    'taxdelinquencyflag', 'taxdelinquencyyear', 'censustractandblock',
+]
 ZERO_IMPUTATION_COLUMNS = ['fireplacecnt', 'pooltypeid2', 'pooltypeid7', 'pooltypeid10', 'decktypeid', 'poolsizesum', 'yardbuildingsqft17']
 ONE_IMPUTATION_COLUMNS = ['fullbathcnt', 'unitcnt', 'bedroomcnt', 'bathroomcnt']
-MODE_IMPUTATION_COLUMNS = PROPERTIES_DF_CATEGORY_COLUMNS
-CONVERT_TO_BOOL_COLUMNS = ['fireplaceflag', 'taxdelinquencyflag']
+MODE_IMPUTATION_COLUMNS = PROPERTIES_DF_CAT_COLUMNS
 UNIVARIATE_IMPUTATION_COLUMNS = ZERO_IMPUTATION_COLUMNS + ONE_IMPUTATION_COLUMNS + MODE_IMPUTATION_COLUMNS
 BEST_XGB_PARAMS = {
     'colsample_bynode': 0.75,
     'lambda': 2.,
     'alpha': 2.,
     'gamma': 0.201,
-    'max_depth': 4,
+    'max_depth': 5,
     'subsample': 0.95,
     'tree_method': 'exact',
-    'learning_rate': 0.25,
+    'learning_rate': 0.01,
     'n_estimators': 10000,
     'random_state': RANDOM_SEED,
 }
@@ -151,7 +154,7 @@ properties_df = drop_outliers(properties_df, 2.2)
 print("Finished dropping outliers")
 # target_variable_eda(properties_df.logerror)
 
-# # imputation pipelines
+# imputation pipelines
 # univariate_impute_pipe = ColumnTransformer(
 #     [
 #         ("impute_0", SimpleImputer(strategy="constant", fill_value=0), ZERO_IMPUTATION_COLUMNS),
@@ -163,7 +166,7 @@ print("Finished dropping outliers")
 #
 # columns_to_impute = (set(properties_df.columns) - set(UNIVARIATE_IMPUTATION_COLUMNS))
 # columns_to_impute.remove('parcelid')
-# cat_columns_to_impute = [col for col in columns_to_impute if col in PROPERTIES_DF_CATEGORY_COLUMNS]
+# cat_columns_to_impute = [col for col in columns_to_impute if col in PROPERTIES_DF_CAT_COLUMNS]
 # numeric_columns_to_impute = [col for col in columns_to_impute if col not in cat_columns_to_impute]
 # # TODO: experiment with xgboost for multivariate imputation
 # multivariate_impute_pipe = ColumnTransformer(
@@ -173,7 +176,6 @@ print("Finished dropping outliers")
 #     ],
 #     remainder='passthrough'
 # )
-
 
 # split data into train, validation, test
 X_train, X_test, y_train, y_test = train_test_split(properties_df.drop('logerror', axis=1), properties_df['logerror'], test_size=TEST_SIZE, random_state=RANDOM_SEED)
@@ -185,16 +187,8 @@ X_val_preprocessed = X_val.copy()
 feat_dropper = FeatureDropper(features_to_drop=['parcelid'])
 year_feat_creator = CreateYearFeatures(date_features=DATE_FEATURES)
 date_feat_creator = CreateDateFeatures()
-cat_vars = [
-    'airconditioningtypeid', 'architecturalstyletypeid', 'buildingclasstypeid', 'buildingqualitytypeid',
-    'decktypeid', 'fips', 'hashottuborspa', 'heatingorsystemtypeid', 'pooltypeid10', 'pooltypeid2',
-    'pooltypeid7', 'propertycountylandusecode', 'propertylandusetypeid', 'propertyzoningdesc',
-    'rawcensustractandblock', 'regionidcity', 'regionidcounty', 'regionidneighborhood', 'regionidzip',
-    'storytypeid', 'typeconstructiontypeid', 'fireplaceflag', 'assessmentyear',
-    'taxdelinquencyflag', 'taxdelinquencyyear', 'censustractandblock',
-]
 feature_encoder = ColumnTransformer([
-    ("ohe_cats", OneHotEncoder(handle_unknown='ignore'), cat_vars)
+    ("ohe_cats", OneHotEncoder(handle_unknown='ignore'), PROPERTIES_DF_CAT_COLUMNS)
 ],
     remainder='passthrough'
 )
@@ -262,97 +256,3 @@ for prediction_date_string in ["20161001", "20161101", "20161201", "20171001", "
 print("outputting predictions to gzip")
 predictions_df.to_csv('submission.gz', index=False, compression='gzip')
 print("done outputting predictions to gzip")
-
-# # data imputation
-# # TODO: try to impute these rather than dropping
-# properties_df_all.loc[properties_df_all['bathroomcnt'] == 0 | properties_df_all['bathroomcnt'].isna(), 'bathroomcnt'] = \
-#     properties_df_all.loc[properties_df_all['bathroomcnt'] != 0, 'bathroomcnt'].mode()[0]
-# # data imputation
-# properties_df_all.calculatedfinishedsquarefeet = properties_df_all.calculatedfinishedsquarefeet.combine_first(
-#     properties_df_all.finishedsquarefeet12)
-# properties_df_all.calculatedfinishedsquarefeet = properties_df_all.calculatedfinishedsquarefeet.fillna(
-#     properties_df_all.calculatedfinishedsquarefeet.median())
-#
-# properties_df_all.loc[properties_df_all.fireplaceflag == True, 'fireplacecnt'] = properties_df_all.loc[
-#     properties_df_all.fireplaceflag == True, 'fireplacecnt'].fillna(1)
-# # drop newly redundant columns
-# properties_df_all = properties_df_all.drop(['finishedsquarefeet12', 'fireplaceflag'], axis=1)
-
-# garage_size_df = properties.loc[(properties.garagetotalsqft != 0) & (properties.garagecarcnt != 0)]
-# # properties = properties[properties.bathroomcnt != 0 & ~properties.bathroomcnt.isna()]
-# garage_size_train_df = garage_size_df[
-#     ['garagecarcnt', 'calculatedfinishedsquarefeet', 'garagetotalsqft']].dropna()
-# garage_size_train_x_df = garage_size_train_df[['garagecarcnt', 'calculatedfinishedsquarefeet']]
-# garage_size_train_y_df = garage_size_train_df['garagetotalsqft']
-# imputer = LinearRegression()  # TODO: this can be changed to something like miss forest for better results
-# imputer.fit(garage_size_train_x_df, garage_size_train_y_df)
-# properties['garagetotalsqft'] = properties['garagetotalsqft'].fillna(
-#     pd.Series(imputer.predict(
-#         properties[properties['garagetotalsqft'].isna()][['garagecarcnt', 'calculatedfinishedsquarefeet']])))
-# properties.loc[
-#     (properties.garagecarcnt > 0) & (properties.garagetotalsqft == 0), 'garagetotalsqft'] = pd.Series(
-#     imputer.predict(
-#         properties.loc[(properties.garagecarcnt > 0) & (properties.garagetotalsqft == 0),
-#         ['garagecarcnt', 'calculatedfinishedsquarefeet']]))
-
-# for col in properties_df_all.columns:
-#     properties_df_all[col] = properties_df_all[col].fillna(properties_df_all[col].mode()[0])
-#
-# properties_df_all = properties_df_all.drop(['lotsizesquarefeet', 'bathroomcnt'], axis=1)
-#
-# # load training data and merge with properties
-# properties_df_2016_train, properties_df_2016_test = properties_df_2016_train[
-#     properties_df_2016_train['transactiondate'] < pd.to_datetime('2016-10-15')], properties_df_2016_train[
-#     properties_df_2016_train['transactiondate'] >= pd.to_datetime('2016-10-15')]
-# train_2016 = pd.read_csv('train_2016_v2.csv')
-# df_train = train_2016.merge(properties_df_all, how='left', on='parcelid')
-
-
-# x_train = df_train.drop(['parcelid', 'logerror'], axis=1)
-# y_train = df_train['logerror'].values
-# data_dmatrix = xgb.DMatrix(data=x_train, label=y_train, enable_categorical=True)
-#
-# params = {'eta': 0.2, 'lambda': 2.5, 'alpha': 2.5, 'max_depth': 2}
-# xgb_model = xgb.train(params, dtrain=data_dmatrix, num_boost_round=35)
-#
-
-# param_grid = {
-#     'eta': [0.2],
-#     'lambda': [2.5],
-#     'alpha': [2.5],
-#     'max_depth': [2]
-# }
-# param_grid_list = list(ParameterGrid(param_grid))
-# results_dict = {}
-# for i, params in enumerate(param_grid_list):
-#     print("testing " + str(params))
-#     cv_results = xgboost.cv(dtrain=data_dmatrix, params=params, nfold=5, seed=1, metrics=['mae'],
-#                             num_boost_round=35)
-#     results_dict[i] = {'params': params, 'cv_results': cv_results}
-#
-# df = pd.DataFrame()
-# for round_num, round_results in results_dict.items():
-#
-#     # extract the parameter dictionary for this boosting round
-#     params_dict = round_results['params']
-#
-#     # extract the cv_results for this boosting round
-#     cv_results = round_results['cv_results']
-#
-#     # iterate over the rows in cv_results
-#     for i in range(len(cv_results)):
-#
-#         # create a dictionary to store the row data
-#         row_dict = {}
-#         row_dict['boosting_round'] = [i]
-#
-#         # add the parameter values to the row dictionary
-#         for param_name, param_value in params_dict.items():
-#             row_dict[param_name] = [param_value]
-#
-#         # add the cv_results to the row dictionary
-#         for result_name, result_values in cv_results.items():
-#             row_dict[result_name] = [result_values[i]]
-#
-#         # add the row dictionary to the DataFrame
-#         df = pd.concat([df, pd.DataFrame.from_dict(row_dict)], ignore_index=True)
