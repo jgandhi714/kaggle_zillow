@@ -40,17 +40,15 @@ ONE_IMPUTATION_COLUMNS = ['fullbathcnt', 'unitcnt', 'bedroomcnt', 'bathroomcnt']
 MODE_IMPUTATION_COLUMNS = PROPERTIES_DF_CATEGORY_COLUMNS
 CONVERT_TO_BOOL_COLUMNS = ['fireplaceflag', 'taxdelinquencyflag']
 UNIVARIATE_IMPUTATION_COLUMNS = ZERO_IMPUTATION_COLUMNS + ONE_IMPUTATION_COLUMNS + MODE_IMPUTATION_COLUMNS
-# IMPUTE_XGB_PARAMS = {'max_depth': 3, 'alpha': 2.}  # arbitrary params
-# PREDICT_XGB_PARAMS = {'eta': 0.2, 'lambda': 2.5, 'alpha': 2.5, 'max_depth': 2}
 BEST_XGB_PARAMS = {
     'colsample_bynode': 0.75,
     'lambda': 2.,
     'alpha': 2.,
     'gamma': 0.201,
-    'max_depth': 5,
+    'max_depth': 4,
     'subsample': 0.95,
     'tree_method': 'exact',
-    'learning_rate': 0.01,
+    'learning_rate': 0.25,
     'n_estimators': 10000,
     'random_state': RANDOM_SEED,
 }
@@ -135,16 +133,6 @@ def drop_outliers(train_df: pd.DataFrame, num_stdevs: int) -> pd.DataFrame:
 #     return df
 
 
-# def engineer_features_properties_df(properties_df: pd.DataFrame) -> pd.DataFrame:
-#     properties_df['halfbathcnt'] = properties_df.bathroomcnt - properties_df.fullbathcnt
-#     properties_df['unfinished_sqft'] = properties_df.lotsizesquarefeet - properties_df.calculatedfinishedsquarefeet
-#     properties_df['unfinished_sqft_pct'] = properties_df.unfinished_sqft / properties_df.lotsizesquarefeet
-#     properties_df['finishedareapct'] = properties_df.calculatedfinishedsquarefeet / properties_df.lotsizesquarefeet
-#     properties_df['property_tax_per_sqft'] = properties_df.taxamount / properties_df.calculatedfinishedsquarefeet
-#     properties_df['avg_finished_area_per_room'] = properties_df.calculatedfinishedsquarefeet / properties_df.bedroomcnt
-#     return properties_df
-
-
 def merge_df_with_csvs(properties_df: pd.DataFrame, csvs: list[str]) -> pd.DataFrame:
     print("joining properties dataframe and training data from csvs " + str(csvs))
     merged_df = pd.concat([pd.read_csv(train_csv) for train_csv in csvs])
@@ -153,9 +141,9 @@ def merge_df_with_csvs(properties_df: pd.DataFrame, csvs: list[str]) -> pd.DataF
     return merged_df
 
 
-# load data
-properties_df = load_properties_df('properties_2017.csv')
-properties_df = merge_df_with_csvs(properties_df, ["train_2016_v2.csv", "train_2017.csv"])
+# load/merge data
+properties_2017 = load_properties_df('properties_2017.csv')
+properties_df = merge_df_with_csvs(properties_2017, ["train_2016_v2.csv", "train_2017.csv"])
 
 # remove outliers and check for normality
 # target_variable_eda(properties_df.logerror)
@@ -237,6 +225,7 @@ xgb_fit_params = {
 }
 print("fitting xgboost")
 xgb_base.fit(X_train_xgb, y_train, **xgb_fit_params)
+print("done fitting xgboost")
 
 # print("scoring xgboost")
 # scores = -cross_val_score(xgb_base, X_train_xgb, y_train, scoring='neg_mean_absolute_error', cv=3, fit_params=xgb_fit_params)
@@ -244,61 +233,35 @@ xgb_base.fit(X_train_xgb, y_train, **xgb_fit_params)
 # print("\nMean: ", scores.mean())
 # print("\nStandard deviation: ", scores.std())
 
+# #hyperparameter tuning
 # xgb_param_grid = {
-#     'learning_rate': [0.3],
-#     'n_estimators': [10000],
-#     'max_depth': list(range(1,7)),
+#     'learning_rate': [0.25],
+#     'n_estimators': [100],
+#     'max_depth': [4],
+#     'colsample_bynode': [0.75],
+#     'lambda': [2., 2.5],
+#     'alpha': [2., 2.5],
+#     'gamma': [0.201],
+#     'subsample': [0.95],
+#     'tree_method': ['exact'],
 #     'random_state': [RANDOM_SEED]
 # }
 # clf = GridSearchCV(xgb.XGBRegressor(), param_grid=xgb_param_grid, scoring='neg_mean_absolute_error', cv=3)
 # clf.fit(X_train_xgb, y_train)
+# results = pd.DataFrame(clf.cv_results_)
 
 print("generating predictions")
-predictions_df = properties_df[['parcelid']]
-# x_train = properties_df.drop(['logerror', 'transactiondate'], axis=1)
-# y_train = properties_df['logerror'].values
-# data_dmatrix = xgb.DMatrix(data=x_train, label=y_train, enable_categorical=True)
-# xgb_model = xgb.train(PREDICT_XGB_PARAMS, dtrain=data_dmatrix, num_boost_round=35)
-properties_2017 = load_properties_df('properties_2017.csv')
-sample_submission = pd.read_csv('sample_submission.csv')
-sample_submission['parcelid'] = sample_submission['ParcelId']
-df_test = pd.merge(sample_submission[['parcelid']], properties_2017, how='left', on='parcelid')
-# predictions_preprocessor.fit(prediction_x)
-df_test['transactiondate'] = pd.Timestamp('2016-12-01')
-df_test = boosting_preprocessor.transform(df_test)
+predictions_df = properties_2017[['parcelid']]
+properties_2017['transactiondate'] = pd.Timestamp('2016-12-01')
+properties_2017 = boosting_preprocessor.transform(properties_2017)
+predictions = xgb_base.predict(properties_2017)
+print("done generating predictions")
 for prediction_date_string in ["20161001", "20161101", "20161201", "20171001", "20171101", "20171201"]:
-    # x_train = properties_df.drop(['parcelid', 'logerror', 'transactiondate'], axis=1)
-    # transaction_month = ((pd.to_datetime(prediction_date_string) - properties_df.transactiondate.min()) // np.timedelta64(1, 'M')) + 1
-    # x_train['transaction_month'] = transaction_month
-    dt = pd.to_datetime(prediction_date_string)
-    df_test['transaction_month'] = ((dt.year - 2016) * 12 + dt.month)
-    predictions_df[prediction_date_string[:6]] = xgb_base.predict(df_test)
-    print("done generating predictions for " + prediction_date_string)
+    predictions_df[prediction_date_string[:6]] = predictions
+
 print("outputting predictions to gzip")
 predictions_df.to_csv('submission.gz', index=False, compression='gzip')
-
-# properties_df = impute_properties_df(properties_df)
-# properties_df = engineer_features_properties_df(properties_df)
-# properties_df = merge_df_with_csvs(properties_df, ["train_2016_v2.csv", "train_2017.csv"])
-# target_variable_eda(properties_df.logerror)
-# properties_df = drop_outliers(properties_df, 2.2)
-#
-# X_train, X_test, y_train, y_test = train_test_split(properties_df.drop(['parcelid', 'logerror', 'transactiondate'], axis=1), )
-#
-# # predictions_df = properties_df[['parcelid']]
-# x_train = properties_df.drop(['parcelid', 'logerror', 'transactiondate'], axis=1)
-# # y_train = properties_df['logerror'].values
-# # data_dmatrix = xgb.DMatrix(data=x_train, label=y_train, enable_categorical=True)
-# # xgb_model = xgb.train(PREDICT_XGB_PARAMS, dtrain=data_dmatrix, num_boost_round=35)
-#
-# for prediction_date_string in ["20161001", "20161101", "20161201", "20171001", "20171101", "20171201"]:
-#     # x_train = properties_df.drop(['parcelid', 'logerror', 'transactiondate'], axis=1)
-#     # transaction_month = ((pd.to_datetime(prediction_date_string) - properties_df.transactiondate.min()) // np.timedelta64(1, 'M')) + 1
-#     # x_train['transaction_month'] = transaction_month
-#     predictions_df[prediction_date_string[:6]] = xgb_model.predict(
-#         xgb.DMatrix(x_train.drop('parcelid', axis=1), enable_categorical=True))
-#
-# predictions_df.to_csv('submission.gz', index=False, compression='gzip')
+print("done outputting predictions to gzip")
 
 # # data imputation
 # # TODO: try to impute these rather than dropping
@@ -335,18 +298,6 @@ predictions_df.to_csv('submission.gz', index=False, compression='gzip')
 # for col in properties_df_all.columns:
 #     properties_df_all[col] = properties_df_all[col].fillna(properties_df_all[col].mode()[0])
 #
-# properties_df_all[
-#     ['airconditioningtypeid', 'buildingqualitytypeid', 'fips', 'heatingorsystemtypeid', 'propertycountylandusecode',
-#      'propertylandusetypeid', 'propertyzoningdesc', 'regionidcity', 'regionidneighborhood', 'regionidzip',
-#      'censustractandblock']] = properties_df_all[
-#     ['airconditioningtypeid', 'buildingqualitytypeid', 'fips', 'heatingorsystemtypeid', 'propertycountylandusecode',
-#      'propertylandusetypeid', 'propertyzoningdesc', 'regionidcity', 'regionidneighborhood', 'regionidzip',
-#      'censustractandblock']].astype('category')
-# properties_df_all['halfbathcnt'] = properties_df_all.bathroomcnt - properties_df_all.fullbathcnt
-# properties_df_all[
-#     'unfinishedsquarefeet'] = properties_df_all.lotsizesquarefeet - properties_df_all.calculatedfinishedsquarefeet
-# properties_df_all[
-#     'finishedareapct'] = properties_df_all.calculatedfinishedsquarefeet / properties_df_all.lotsizesquarefeet
 # properties_df_all = properties_df_all.drop(['lotsizesquarefeet', 'bathroomcnt'], axis=1)
 #
 # # load training data and merge with properties
@@ -364,15 +315,6 @@ predictions_df.to_csv('submission.gz', index=False, compression='gzip')
 # params = {'eta': 0.2, 'lambda': 2.5, 'alpha': 2.5, 'max_depth': 2}
 # xgb_model = xgb.train(params, dtrain=data_dmatrix, num_boost_round=35)
 #
-# predictions_df = properties_df_all[['parcelid']]
-# for prediction_date_string in ["20161001", "20161101", "20161201", "20171001", "20171101", "20171201"]:
-#     x_train = properties_df_all
-#     transaction_month = ((pd.to_datetime(prediction_date_string) - min_date) // np.timedelta64(1, 'M')) + 1
-#     x_train['transaction_month'] = transaction_month
-#     predictions_df[prediction_date_string[:6]] = xgb_model.predict(
-#         xgb.DMatrix(x_train.drop('parcelid', axis=1), enable_categorical=True))
-#
-# predictions_df.to_csv('first_submission.gz', index=False, compression='gzip')
 
 # param_grid = {
 #     'eta': [0.2],
