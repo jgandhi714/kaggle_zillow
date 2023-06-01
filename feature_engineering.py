@@ -33,7 +33,7 @@ class CreateDateFeatures(BaseEstimator, TransformerMixin):
 
     def transform(self, X):
         dt = pd.to_datetime(X['transactiondate']).dt
-        X['transaction_month'] = ((dt.year - 2016) * 12 + dt.month).astype('category')
+        X['transaction_month'] = ((dt.year - 2016) * 12 + dt.month)
         X = X.drop(['transactiondate'], axis=1)
         return X
 

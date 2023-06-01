@@ -9,7 +9,7 @@ class FeatureEncoderAndScaler(BaseEstimator, TransformerMixin):
         self.features_to_encode = features_to_encode
         self.features_to_scale = features_to_scale
         self.numeric_types = numeric_types
-        self.feature_encoder_and_scaler = None
+        self.feature_encoder_scaler = None
 
     def fit(self, X, y=None):
         if not self.features_to_encode:
